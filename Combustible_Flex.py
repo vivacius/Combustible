@@ -80,7 +80,7 @@ def descargar_resultado(df):
     )
 
 # Interfaz Streamlit
-st.title("🛠️ Análisis de Galones por Hora Trabajada")
+st.title("🛠️ Procesamiento de datos para obtención de Galones por Hora Trabajada en los Equipos")
 
 file_abastecimientos = st.file_uploader("📂 Sube el archivo de Abastecimientos", type=["xlsx"])
 file_horas = st.file_uploader("📂 Sube el archivo de Horas Trabajadas", type=["xlsx"])
