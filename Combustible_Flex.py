@@ -103,6 +103,7 @@ with tab1:
 
     file_abastecimientos = st.file_uploader("📂 Sube el archivo de Abastecimientos", type=["xlsx"], key="abastecimientos")
     file_horas = st.file_uploader("📂 Sube el archivo de Horas Trabajadas", type=["xlsx"], key="horas")
+    file_clasificacion = st.file_uploader("📂 Sube el archivo de Clasificación de Equipos", type=["xlsx", "csv"], key="clasificacion")
 
     if file_abastecimientos and file_horas:
         st.info("📥 Cargando archivos...")
@@ -119,6 +120,19 @@ with tab1:
 
         barra_progreso.empty()
         estado_texto.text("✅ Procesamiento completado")
+
+        # --- Enriquecer con clasificación ---
+        if file_clasificacion:
+            if file_clasificacion.name.endswith(".csv"):
+                clasificacion = pd.read_csv(file_clasificacion)
+            else:
+                clasificacion = pd.read_excel(file_clasificacion)
+
+            clasificacion['EQUIPO3'] = clasificacion['EQUIPO3'].astype(int)
+            df_resultados = df_resultados.merge(clasificacion[['EQUIPO3', 'ZONA']], 
+                                                left_on='Código Equipo', right_on='EQUIPO3', how='left')
+            df_resultados['ZONA'] = df_resultados['ZONA'].fillna("OTROS FRENTES")
+            df_resultados.drop(columns=['EQUIPO3'], inplace=True)
 
         st.success("✅ ¡Datos procesados con éxito!")
         st.dataframe(df_resultados)
@@ -138,6 +152,11 @@ with tab2:
     if 'df_resultados' in st.session_state and 'horas_trabajadas' in st.session_state:
         df_resultados = st.session_state['df_resultados']
         horas_trabajadas = st.session_state['horas_trabajadas']
+
+        # 🔹 FILTRO POR ZONA
+        zonas = df_resultados['ZONA'].unique()
+        zonas_sel = st.multiselect("🌍 Filtrar por ZONA", zonas, default=zonas)
+        df_resultados = df_resultados[df_resultados['ZONA'].isin(zonas_sel)]
 
         df_viz = df_resultados.copy()
         df_viz['Mes'] = df_viz['Fecha Inicio'].dt.to_period('M').dt.to_timestamp()
@@ -233,4 +252,5 @@ with tab2:
 
     else:
         st.warning("⚠️ Primero procesa los datos en la pestaña 'Procesamiento'.")
+
 
