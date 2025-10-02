@@ -166,6 +166,10 @@ with tab2:
 
         resumen['Año'] = resumen['Mes'].dt.year
 
+        # 🔹 Aseguramos siempre columnas de actividad
+        resumen['Actividad Dominante'] = None
+        resumen['Horas Actividad Dominante'] = None
+
         if "Nombre Actividad" in horas_trabajadas.columns:
             horas_actividad = horas_trabajadas.copy()
             horas_actividad['Mes'] = horas_actividad['Fecha'].dt.to_period('M').dt.to_timestamp()
@@ -187,7 +191,9 @@ with tab2:
                 'horas_totales': 'Horas Actividad Dominante'
             })
 
-            resumen = resumen.merge(actividad_dominante, on=['Código Equipo', 'Mes'], how='left')
+            resumen = resumen.drop(columns=['Actividad Dominante','Horas Actividad Dominante']).merge(
+                actividad_dominante, on=['Código Equipo', 'Mes'], how='left'
+            )
 
         # ======================
         # 📊 KPIs del último mes
