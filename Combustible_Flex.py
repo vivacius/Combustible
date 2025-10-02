@@ -157,15 +157,41 @@ with tab2:
         df_viz = df_resultados.copy()
         df_viz['Mes'] = df_viz['Fecha Inicio'].dt.to_period('M').dt.to_timestamp()
 
-        # ======================
-        # 📊 KPIs del último mes
-        # ======================
+        # --- Resumen con año y actividad dominante ---
         resumen = df_viz.groupby(['Código Equipo', 'Mes']).agg(
             media_consumo=('Galones por Hora', 'mean'),
             desviacion=('Galones por Hora', 'std'),
             registros=('Galones por Hora', 'count')
         ).reset_index()
 
+        resumen['Año'] = resumen['Mes'].dt.year
+
+        if "Nombre Actividad" in horas_trabajadas.columns:
+            horas_actividad = horas_trabajadas.copy()
+            horas_actividad['Mes'] = horas_actividad['Fecha'].dt.to_period('M').dt.to_timestamp()
+
+            actividad_dominante = (
+                horas_actividad.groupby(['Código Equipo', 'Mes', 'Nombre Actividad'])
+                .agg(horas_totales=('Duracion (horas)', 'sum'))
+                .reset_index()
+            )
+
+            actividad_dominante = (
+                actividad_dominante.sort_values(['Código Equipo', 'Mes', 'horas_totales'], ascending=[True, True, False])
+                .groupby(['Código Equipo', 'Mes'])
+                .first()
+                .reset_index()[['Código Equipo', 'Mes', 'Nombre Actividad', 'horas_totales']]
+            )
+            actividad_dominante = actividad_dominante.rename(columns={
+                'Nombre Actividad': 'Actividad Dominante',
+                'horas_totales': 'Horas Actividad Dominante'
+            })
+
+            resumen = resumen.merge(actividad_dominante, on=['Código Equipo', 'Mes'], how='left')
+
+        # ======================
+        # 📊 KPIs del último mes
+        # ======================
         if not resumen.empty:
             ultimo_mes = resumen['Mes'].max()
             resumen_mes = resumen[resumen['Mes'] == ultimo_mes]
@@ -178,11 +204,11 @@ with tab2:
 
             with col1:
                 st.markdown("✅ **Más eficientes (menor gal/hora)**")
-                st.table(top_mejores[['Código Equipo', 'media_consumo']].round(2))
+                st.table(top_mejores[['Código Equipo', 'media_consumo', 'Actividad Dominante']].round(2))
 
             with col2:
                 st.markdown("⚠️ **Menos eficientes (mayor gal/hora)**")
-                st.table(top_peores[['Código Equipo', 'media_consumo']].round(2))
+                st.table(top_peores[['Código Equipo', 'media_consumo', 'Actividad Dominante']].round(2))
 
         # --- Gráfico de tendencia ---
         st.subheader("📈 Tendencia mensual por equipo")
@@ -203,12 +229,22 @@ with tab2:
             ax.legend()
             st.pyplot(fig)
 
-        # --- Boxplot de dispersión ---
-        st.subheader("📦 Boxplot de dispersión por mes (todos los equipos)")
+        # --- Boxplot limpio y dinámico ---
+        st.subheader("📦 Distribución de consumo (Boxplot)")
+        modo = st.radio("Modo de visualización", ["Todos los equipos", "Un equipo específico"])
         fig2, ax2 = plt.subplots(figsize=(10,5))
-        sns.boxplot(data=df_viz, x='Mes', y='Galones por Hora', ax=ax2)
-        sns.stripplot(data=df_viz, x='Mes', y='Galones por Hora', ax=ax2, color='red', alpha=0.5, jitter=0.2)
-        ax2.set_title("Distribución de consumo (Gal/hora) por mes")
+
+        if modo == "Todos los equipos":
+            sns.boxplot(data=df_viz, x='Mes', y='Galones por Hora', ax=ax2, color="lightblue")
+            sns.stripplot(data=df_viz, x='Mes', y='Galones por Hora', ax=ax2, color='red', alpha=0.5, jitter=0.2)
+            ax2.set_title("Distribución mensual de consumo (Todos los equipos)")
+        else:
+            equipo_box = st.selectbox("Selecciona equipo para boxplot", df_viz['Código Equipo'].unique())
+            df_equipo_box = df_viz[df_viz['Código Equipo'] == equipo_box]
+            sns.boxplot(data=df_equipo_box, x='Mes', y='Galones por Hora', ax=ax2, color="lightgreen")
+            sns.stripplot(data=df_equipo_box, x='Mes', y='Galones por Hora', ax=ax2, color='red', alpha=0.6, jitter=0.2)
+            ax2.set_title(f"Distribución mensual de consumo – Equipo {equipo_box}")
+
         ax2.set_ylabel("Gal/hora")
         st.pyplot(fig2)
 
