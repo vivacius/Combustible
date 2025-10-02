@@ -1,34 +1,23 @@
 import streamlit as st
 import pandas as pd
 import io
-import time
 import matplotlib.pyplot as plt
 import seaborn as sns
 
 # ===============================
-# FUNCIONES AUXILIARES
+# FUNCIONES AUXILIARES CON CACHÉ
 # ===============================
 
+@st.cache_data
 def cargar_datos(file_abastecimientos, file_horas):
+    """Carga y devuelve los DataFrames desde los archivos subidos."""
     abastecimientos = pd.read_excel(file_abastecimientos)
     horas_trabajadas = pd.read_excel(file_horas, dtype={'Código Equipo': object})
     return abastecimientos, horas_trabajadas
 
-def limpiar_datos(abastecimientos, horas_trabajadas):
-    # Eliminar códigos que empiezan por letras
-    abastecimientos = abastecimientos[abastecimientos['Código Equipo'].astype(str).str.match(r'^\d+$')]
-    
-    # Convertir Código Equipo a numérico
-    abastecimientos['Código Equipo'] = abastecimientos['Código Equipo'].astype(int)
-    horas_trabajadas['Código Equipo'] = horas_trabajadas['Código Equipo'].astype(int)
-
-    # Convertir fechas
-    abastecimientos['Fecha Consumo'] = pd.to_datetime(abastecimientos['Fecha Consumo'], format='%d/%m/%Y')
-    horas_trabajadas['Fecha'] = pd.to_datetime(horas_trabajadas['Fecha'], format='%d/%m/%Y %I:%M %p')
-
-    return abastecimientos, horas_trabajadas
-
-def procesar_datos(abastecimientos, horas_trabajadas, barra_progreso, estado_texto):
+@st.cache_data
+def procesar_datos(abastecimientos, horas_trabajadas):
+    """Procesa los datos para calcular galones por hora trabajada."""
     abastecimientos_agrupados = abastecimientos.groupby(['Código Equipo', 'Fecha Consumo']).agg({
         'Cantidad': 'sum'
     }).reset_index()
@@ -37,23 +26,33 @@ def procesar_datos(abastecimientos, horas_trabajadas, barra_progreso, estado_tex
         'Duracion (horas)': 'sum'
     }).reset_index()
 
-    abastecimientos_agrupados = abastecimientos_agrupados.rename(columns={'Fecha Consumo': 'Fecha', 'Cantidad': 'Galones'})
-    horas_trabajadas_agrupadas = horas_trabajadas_agrupadas.rename(columns={'Duracion (horas)': 'Horas Trabajadas'})
+    abastecimientos_agrupados = abastecimientos_agrupados.rename(
+        columns={'Fecha Consumo': 'Fecha', 'Cantidad': 'Galones'}
+    )
+    horas_trabajadas_agrupadas = horas_trabajadas_agrupadas.rename(
+        columns={'Duracion (horas)': 'Horas Trabajadas'}
+    )
 
     resultados = []
     equipos = abastecimientos_agrupados['Código Equipo'].unique()
-    total = len(equipos)
 
-    for idx, equipo in enumerate(equipos):
-        datos_abastecimiento = abastecimientos_agrupados[abastecimientos_agrupados['Código Equipo'] == equipo].sort_values('Fecha')
-        datos_horas = horas_trabajadas_agrupadas[horas_trabajadas_agrupadas['Código Equipo'] == equipo]
+    for equipo in equipos:
+        datos_abastecimiento = abastecimientos_agrupados[
+            abastecimientos_agrupados['Código Equipo'] == equipo
+        ].sort_values('Fecha')
+
+        datos_horas = horas_trabajadas_agrupadas[
+            horas_trabajadas_agrupadas['Código Equipo'] == equipo
+        ]
 
         for i in range(len(datos_abastecimiento) - 1):
             fila_actual = datos_abastecimiento.iloc[i]
             fila_siguiente = datos_abastecimiento.iloc[i + 1]
             fecha_inicio = fila_actual['Fecha']
             fecha_fin = fila_siguiente['Fecha']
-            horas_intervalo = datos_horas[(datos_horas['Fecha'] > fecha_inicio) & (datos_horas['Fecha'] <= fecha_fin)]
+            horas_intervalo = datos_horas[
+                (datos_horas['Fecha'] > fecha_inicio) & (datos_horas['Fecha'] <= fecha_fin)
+            ]
             horas_trabajadas_total = horas_intervalo['Horas Trabajadas'].sum()
             galones_intervalo = fila_actual['Galones']
 
@@ -66,14 +65,10 @@ def procesar_datos(abastecimientos, horas_trabajadas, barra_progreso, estado_tex
                 'Galones por Hora': galones_intervalo / horas_trabajadas_total if horas_trabajadas_total > 0 else 0
             })
 
-        # Actualizar barra de progreso
-        progreso = (idx + 1) / total
-        barra_progreso.progress(progreso)
-        estado_texto.text(f"⏳ Procesando equipo {equipo} ({idx + 1}/{total})")
-
     return pd.DataFrame(resultados)
 
 def descargar_resultado(df, nombre_archivo, etiqueta):
+    """Permite descargar un DataFrame en Excel."""
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
         df.to_excel(writer, index=False, sheet_name='Resultados')
@@ -109,17 +104,17 @@ with tab1:
         st.info("📥 Cargando archivos...")
         abastecimientos, horas_trabajadas = cargar_datos(file_abastecimientos, file_horas)
 
-        st.info("🧹 Limpiando y preparando los datos...")
-        abastecimientos, horas_trabajadas = limpiar_datos(abastecimientos, horas_trabajadas)
+        # Limpieza
+        abastecimientos = abastecimientos[abastecimientos['Código Equipo'].astype(str).str.match(r'^\d+$')]
+        abastecimientos['Código Equipo'] = abastecimientos['Código Equipo'].astype(int)
+        horas_trabajadas['Código Equipo'] = horas_trabajadas['Código Equipo'].astype(int)
 
-        barra_progreso = st.progress(0)
-        estado_texto = st.empty()
+        # Fechas
+        abastecimientos['Fecha Consumo'] = pd.to_datetime(abastecimientos['Fecha Consumo'], format='%d/%m/%Y')
+        horas_trabajadas['Fecha'] = pd.to_datetime(horas_trabajadas['Fecha'], format='%d/%m/%Y %I:%M %p')
 
-        st.info("⚙️ Procesando información...")
-        df_resultados = procesar_datos(abastecimientos, horas_trabajadas, barra_progreso, estado_texto)
-
-        barra_progreso.empty()
-        estado_texto.text("✅ Procesamiento completado")
+        # Procesar con caché
+        df_resultados = procesar_datos(abastecimientos, horas_trabajadas)
 
         # --- Enriquecer con clasificación ---
         if file_clasificacion:
@@ -139,7 +134,7 @@ with tab1:
 
         descargar_resultado(df_resultados, "Resultado_final.xlsx", "archivo Excel de resultados")
 
-        # Guardar en sesión para usar en Tab 2
+        # Guardar en sesión para Tab 2
         st.session_state['df_resultados'] = df_resultados
         st.session_state['horas_trabajadas'] = horas_trabajadas
 
@@ -149,54 +144,28 @@ with tab1:
 with tab2:
     st.header("📊 Visualización y Análisis")
 
-    if 'df_resultados' in st.session_state and 'horas_trabajadas' in st.session_state:
+    if 'df_resultados' in st.session_state:
         df_resultados = st.session_state['df_resultados']
         horas_trabajadas = st.session_state['horas_trabajadas']
 
-        # 🔹 FILTRO POR ZONA
+        # 🔹 Filtro por zona
         zonas = df_resultados['ZONA'].unique()
         zonas_sel = st.multiselect("🌍 Filtrar por ZONA", zonas, default=zonas)
         df_resultados = df_resultados[df_resultados['ZONA'].isin(zonas_sel)]
 
+        # Agregar columna Mes
         df_viz = df_resultados.copy()
         df_viz['Mes'] = df_viz['Fecha Inicio'].dt.to_period('M').dt.to_timestamp()
 
-        # --- Actividad dominante con Nombre Actividad ---
-        horas_actividad = horas_trabajadas.copy()
-        horas_actividad['Mes'] = horas_actividad['Fecha'].dt.to_period('M').dt.to_timestamp()
-
-        if "Nombre Actividad" in horas_actividad.columns:
-            actividad_dominante = (
-                horas_actividad.groupby(['Código Equipo', 'Mes', 'Nombre Actividad'])
-                .agg(horas_totales=('Duracion (horas)', 'sum'))
-                .reset_index()
-            )
-
-            actividad_dominante = (
-                actividad_dominante.sort_values(['Código Equipo', 'Mes', 'horas_totales'], ascending=[True, True, False])
-                .groupby(['Código Equipo', 'Mes'])
-                .first()
-                .reset_index()[['Código Equipo', 'Mes', 'Nombre Actividad', 'horas_totales']]
-            )
-            actividad_dominante = actividad_dominante.rename(columns={
-                'Nombre Actividad': 'Actividad Dominante',
-                'horas_totales': 'Horas Actividad Dominante'
-            })
-        else:
-            actividad_dominante = pd.DataFrame(columns=['Código Equipo','Mes','Actividad Dominante','Horas Actividad Dominante'])
-
-        # --- Resumen ---
+        # ======================
+        # 📊 KPIs del último mes
+        # ======================
         resumen = df_viz.groupby(['Código Equipo', 'Mes']).agg(
             media_consumo=('Galones por Hora', 'mean'),
             desviacion=('Galones por Hora', 'std'),
             registros=('Galones por Hora', 'count')
         ).reset_index()
 
-        resumen = resumen.merge(actividad_dominante, on=['Código Equipo', 'Mes'], how='left')
-
-        # ======================
-        # 📊 KPIs del último mes
-        # ======================
         if not resumen.empty:
             ultimo_mes = resumen['Mes'].max()
             resumen_mes = resumen[resumen['Mes'] == ultimo_mes]
@@ -209,30 +178,30 @@ with tab2:
 
             with col1:
                 st.markdown("✅ **Más eficientes (menor gal/hora)**")
-                st.table(top_mejores[['Código Equipo', 'media_consumo', 'Actividad Dominante']].round(2))
+                st.table(top_mejores[['Código Equipo', 'media_consumo']].round(2))
 
             with col2:
                 st.markdown("⚠️ **Menos eficientes (mayor gal/hora)**")
-                st.table(top_peores[['Código Equipo', 'media_consumo', 'Actividad Dominante']].round(2))
+                st.table(top_peores[['Código Equipo', 'media_consumo']].round(2))
 
         # --- Gráfico de tendencia ---
         st.subheader("📈 Tendencia mensual por equipo")
         equipos = resumen['Código Equipo'].unique()
-        equipo_sel = st.selectbox("Selecciona un equipo", equipos)
+        if len(equipos) > 0:
+            equipo_sel = st.selectbox("Selecciona un equipo", equipos)
+            df_equipo = resumen[resumen['Código Equipo'] == equipo_sel]
 
-        df_equipo = resumen[resumen['Código Equipo'] == equipo_sel]
-
-        fig, ax = plt.subplots(figsize=(8,4))
-        ax.plot(df_equipo['Mes'], df_equipo['media_consumo'], marker='o', label="Media Gal/hora")
-        if not df_equipo['desviacion'].isnull().all():
-            ax.fill_between(df_equipo['Mes'],
-                            df_equipo['media_consumo'] - df_equipo['desviacion'],
-                            df_equipo['media_consumo'] + df_equipo['desviacion'],
-                            alpha=0.2, label="±1 Desv.Est.")
-        ax.set_title(f"Consumo mensual Equipo {equipo_sel}")
-        ax.set_ylabel("Gal/hora")
-        ax.legend()
-        st.pyplot(fig)
+            fig, ax = plt.subplots(figsize=(8,4))
+            ax.plot(df_equipo['Mes'], df_equipo['media_consumo'], marker='o', label="Media Gal/hora")
+            if not df_equipo['desviacion'].isnull().all():
+                ax.fill_between(df_equipo['Mes'],
+                                df_equipo['media_consumo'] - df_equipo['desviacion'],
+                                df_equipo['media_consumo'] + df_equipo['desviacion'],
+                                alpha=0.2, label="±1 Desv.Est.")
+            ax.set_title(f"Consumo mensual Equipo {equipo_sel}")
+            ax.set_ylabel("Gal/hora")
+            ax.legend()
+            st.pyplot(fig)
 
         # --- Boxplot de dispersión ---
         st.subheader("📦 Boxplot de dispersión por mes (todos los equipos)")
@@ -242,10 +211,6 @@ with tab2:
         ax2.set_title("Distribución de consumo (Gal/hora) por mes")
         ax2.set_ylabel("Gal/hora")
         st.pyplot(fig2)
-
-        # --- Tabla resumen ---
-        st.subheader("📋 Resumen mensual con actividad dominante")
-        st.dataframe(resumen)
 
         # --- Descargar resumen ---
         descargar_resultado(resumen, "Resumen_Mensual.xlsx", "resumen mensual")
