@@ -157,13 +157,15 @@ with tab2:
         df_viz = df_resultados.copy()
         df_viz['Mes'] = df_viz['Fecha Inicio'].dt.to_period('M').dt.to_timestamp()
 
-        # --- Resumen con año y actividad dominante ---
+        # --- Resumen mensual ponderado ---
         resumen = df_viz.groupby(['Código Equipo', 'Mes']).agg(
-            media_consumo=('Galones por Hora', 'mean'),
-            desviacion=('Galones por Hora', 'std'),
-            registros=('Galones por Hora', 'count')
+            galones_totales=('Galones', 'sum'),
+            horas_totales=('Horas Trabajadas', 'sum')
         ).reset_index()
 
+        resumen['media_consumo'] = resumen['galones_totales'] / resumen['horas_totales']
+        resumen['desviacion'] = df_viz.groupby(['Código Equipo','Mes'])['Galones por Hora'].std().values
+        resumen['registros'] = df_viz.groupby(['Código Equipo','Mes'])['Galones por Hora'].count().values
         resumen['Año'] = resumen['Mes'].dt.year
 
         # 🔹 Aseguramos siempre columnas de actividad
@@ -235,29 +237,38 @@ with tab2:
             ax.legend()
             st.pyplot(fig)
 
-        # --- Boxplot limpio y dinámico ---
-        st.subheader("📦 Distribución de consumo (Boxplot)")
-        modo = st.radio("Modo de visualización", ["Todos los equipos", "Un equipo específico"])
-        fig2, ax2 = plt.subplots(figsize=(10,5))
+        # --- Boxplot sin outliers ---
+        st.subheader("📦 Distribución mensual sin outliers")
+        fig3, ax3 = plt.subplots(figsize=(10,5))
+        sns.boxplot(data=df_viz, x='Mes', y='Galones por Hora', ax=ax3, showfliers=False, color="skyblue")
+        ax3.set_title("Consumo mensual (Gal/hora) sin outliers")
+        ax3.set_ylabel("Gal/hora")
+        st.pyplot(fig3)
 
-        if modo == "Todos los equipos":
-            sns.boxplot(data=df_viz, x='Mes', y='Galones por Hora', ax=ax2, color="lightblue")
-            sns.stripplot(data=df_viz, x='Mes', y='Galones por Hora', ax=ax2, color='red', alpha=0.5, jitter=0.2)
-            ax2.set_title("Distribución mensual de consumo (Todos los equipos)")
-        else:
-            equipo_box = st.selectbox("Selecciona equipo para boxplot", df_viz['Código Equipo'].unique())
-            df_equipo_box = df_viz[df_viz['Código Equipo'] == equipo_box]
-            sns.boxplot(data=df_equipo_box, x='Mes', y='Galones por Hora', ax=ax2, color="lightgreen")
-            sns.stripplot(data=df_equipo_box, x='Mes', y='Galones por Hora', ax=ax2, color='red', alpha=0.6, jitter=0.2)
-            ax2.set_title(f"Distribución mensual de consumo – Equipo {equipo_box}")
+        # --- Boxplot solo con outliers ---
+        st.subheader("🚨 Outliers de consumo mensual")
+        fig4, ax4 = plt.subplots(figsize=(10,5))
+        for mes, grupo in df_viz.groupby('Mes'):
+            q1 = grupo['Galones por Hora'].quantile(0.25)
+            q3 = grupo['Galones por Hora'].quantile(0.75)
+            iqr = q3 - q1
+            lower = q1 - 1.5*iqr
+            upper = q3 + 1.5*iqr
 
-        ax2.set_ylabel("Gal/hora")
-        st.pyplot(fig2)
+            outliers = grupo[(grupo['Galones por Hora'] < lower) | (grupo['Galones por Hora'] > upper)]
+            ax4.scatter([mes]*len(outliers), outliers['Galones por Hora'], color="red", alpha=0.7,
+                        label="Outliers" if mes==df_viz['Mes'].min() else "")
+        ax4.set_title("Valores atípicos (Outliers) de consumo mensual")
+        ax4.set_ylabel("Gal/hora")
+        ax4.legend()
+        st.pyplot(fig4)
 
         # --- Descargar resumen ---
         descargar_resultado(resumen, "Resumen_Mensual.xlsx", "resumen mensual")
 
     else:
         st.warning("⚠️ Primero procesa los datos en la pestaña 'Procesamiento'.")
+
+
 
 
