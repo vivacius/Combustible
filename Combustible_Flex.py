@@ -213,40 +213,40 @@ with tab2:
             resumen['% diferencia'] = ((resumen['media_consumo'] - resumen['x̅ HISTORICA']) /
                                        resumen['x̅ HISTORICA']) * 100
 
-        # ========= Tabla pivote absoluta =========
-st.subheader("📅 Tabla mensual (Gal/hora ponderado)")
-
-tabla_mes_abs = resumen.pivot_table(
-    index='Código Equipo',
-    columns=resumen['Mes'].dt.strftime("%B"),
-    values='media_consumo',
-    aggfunc='mean'
-).round(2)
-
-st.dataframe(
-    tabla_mes_abs.style.background_gradient(cmap="RdYlGn_r", axis=None)
-)
-
-# ========= Tabla pivote comparada contra histórico =========
-if 'x̅ HISTORICA' in resumen.columns:
-    st.subheader("📊 Tabla mensual (% diferencia vs histórico)")
-
-    resumen['% dif vs histórico'] = ((resumen['media_consumo'] - resumen['x̅ HISTORICA']) /
-                                     resumen['x̅ HISTORICA']) * 100
-
-    tabla_mes_hist = resumen.pivot_table(
-        index='Código Equipo',
-        columns=resumen['Mes'].dt.strftime("%B"),
-        values='% dif vs histórico',
-        aggfunc='mean'
-    ).round(1)
-
-    st.dataframe(
-        tabla_mes_hist.style.background_gradient(cmap="RdYlGn_r", axis=None)
-                           .format("{:+.1f}%")
-    )
-else:
-    st.warning("No se encontró la columna de media histórica (x̅ HISTORICA) en los datos.")
+                # ========= Tabla pivote absoluta =========
+        st.subheader("📅 Tabla mensual (Gal/hora ponderado)")
+        
+        tabla_mes_abs = resumen.pivot_table(
+            index='Código Equipo',
+            columns=resumen['Mes'].dt.strftime("%B"),
+            values='media_consumo',
+            aggfunc='mean'
+        ).round(2)
+        
+        st.dataframe(
+            tabla_mes_abs.style.background_gradient(cmap="RdYlGn_r", axis=None)
+        )
+        
+        # ========= Tabla pivote comparada contra histórico =========
+        if 'x̅ HISTORICA' in resumen.columns:
+            st.subheader("📊 Tabla mensual (% diferencia vs histórico)")
+        
+            resumen['% dif vs histórico'] = ((resumen['media_consumo'] - resumen['x̅ HISTORICA']) /
+                                             resumen['x̅ HISTORICA']) * 100
+        
+            tabla_mes_hist = resumen.pivot_table(
+                index='Código Equipo',
+                columns=resumen['Mes'].dt.strftime("%B"),
+                values='% dif vs histórico',
+                aggfunc='mean'
+            ).round(1)
+        
+            st.dataframe(
+                tabla_mes_hist.style.background_gradient(cmap="RdYlGn_r", axis=None)
+                                   .format("{:+.1f}%")
+            )
+        else:
+            st.warning("No se encontró la columna de media histórica (x̅ HISTORICA) en los datos.")
 
 
         # ========= KPIs último mes =========
@@ -355,4 +355,5 @@ else:
 
     else:
         st.warning("⚠️ Primero procesa los datos en la pestaña 'Procesamiento'.")
+
 
