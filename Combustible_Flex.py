@@ -199,27 +199,45 @@ with tab2:
                                              resumen['x̅ HISTORICA']) * 100
 
         # ========= Tablas =========
+        # ========= Tabla mensual Gal/hora =========
         st.subheader("📅 Tabla mensual (Gal/hora)")
+        
         tabla_mes_abs = resumen.pivot_table(
             index='Código Equipo',
             columns=resumen['Mes'].dt.strftime("%B"),
             values='media_consumo',
             aggfunc='mean'
         ).round(2)
-        st.dataframe(tabla_mes_abs.style.background_gradient(cmap="RdYlGn_r", axis=None))
-
+        
+        st.dataframe(tabla_mes_abs)
+        
+        # ========= Tabla mensual % dif vs histórico =========
         if 'x̅ HISTORICA' in resumen.columns:
             st.subheader("📊 Tabla mensual (% diferencia vs histórico)")
+        
+            # función para colorear según condiciones
+            def color_dif(val):
+                if pd.isna(val):
+                    return ""
+                if -10 <= val <= 10:
+                    return "color: blue; font-weight: bold;"   # dentro del rango aceptable
+                elif val < -10:
+                    return "color: green; font-weight: bold;"  # mejor que histórico
+                else:
+                    return "color: red; font-weight: bold;"    # peor que histórico
+        
             tabla_mes_hist = resumen.pivot_table(
                 index='Código Equipo',
                 columns=resumen['Mes'].dt.strftime("%B"),
                 values='% dif vs histórico',
                 aggfunc='mean'
             ).round(1)
+        
             st.dataframe(
-                tabla_mes_hist.style.background_gradient(cmap="RdYlGn_r", axis=None)
-                                   .format("{:+.1f}%")
+                tabla_mes_hist.style.applymap(color_dif).format("{:+.1f}%")
             )
+        else:
+            st.warning("⚠️ No se encontró la columna de media histórica (x̅ HISTORICA).")
 
         # ========= Informe automático =========
         if not resumen.empty and 'x̅ HISTORICA' in resumen.columns:
@@ -285,3 +303,4 @@ with tab2:
         # ========= Descarga =========
         with st.expander("📥 Descargas"):
             descargar_resultado(resumen, "Resumen_Mensual.xlsx", "resumen mensual")
+
